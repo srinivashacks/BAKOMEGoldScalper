@@ -97,6 +97,8 @@ It is the **only open‑source, ICT‑based Gold scalper** with institutional‑
 - Develop a **Python backtesting module**
 - Create a **dashboard** for live monitoring
 
+[![Support me on Drips](https://www.drips.network/api/embed/project/https%3A%2F%2Fgithub.com%2FBAKOME-Hub%2FBAKOMEGoldScalper/support.png?background=blue&style=github&text=me&stat=support)](https://www.drips.network/app/projects/github/BAKOME-Hub/BAKOMEGoldScalper)
+
 ### Crypto Donations
 
 | Network | Address |
