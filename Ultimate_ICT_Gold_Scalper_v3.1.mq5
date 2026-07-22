@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
-//|                                       BAKOME_Ultimate_ICT_Gold_Scalper_v3.0.mq5 |
+//|                                BAKOME_Ultimate_ICT_Gold_Scalper_v3.0.mq5 |
 //|                                      BAKOME Trading Systems      |
-//|                                                   Version 3.1 |
+//|                                                      Version 3.1 |
 //+------------------------------------------------------------------+
 #property copyright "BAKOME – Fabrice Kitoko"
 #property version   "3.1"
@@ -17,7 +17,7 @@
 #include <Math/Stat/Math.mqh>
 
 //+------------------------------------------------------------------+
-//| Input Parameters                                                |
+//| Input Parameters                                                 |
 //+------------------------------------------------------------------+
 input group "=== Risk Management ==="
 input double RiskPercent            = 1.0;      // Risk per trade (%)
@@ -514,7 +514,9 @@ private:
       return true;
    }
    
+   // FIX #2: Call RefreshRates() so Ask/Bid doesn't return 0.0 creating bad SL/TP
    void CalculateBullishEntry(double &entry, double &sl, double &tp) {
+      m_symbol.RefreshRates(); 
       entry = m_symbol.Ask();
       sl = entry - (m_currentATR * ATR_SL_Multiplier);
       tp = entry + (m_currentATR * ATR_TP_Multiplier);
@@ -524,6 +526,7 @@ private:
    }
    
    void CalculateBearishEntry(double &entry, double &sl, double &tp) {
+      m_symbol.RefreshRates();
       entry = m_symbol.Bid();
       sl = entry + (m_currentATR * ATR_SL_Multiplier);
       tp = entry - (m_currentATR * ATR_TP_Multiplier);
@@ -532,13 +535,27 @@ private:
       tp   = NormalizeDouble(tp,   (int)m_symbol.Digits());
    }
    
+   // FIX #3: Adjusted mathematical formula so lot calculation is based on actual tick values
    double RiskLot(double riskPercent, double atr) {
       double riskAmount = m_account.Balance() * riskPercent / 100.0;
-      double lot = riskAmount / (atr * m_symbol.Point() * 10.0);
-      lot = NormalizeDouble(lot, 2);
-      if(lot < 0.01) lot = 0.01;
-      if(lot > 100.0) lot = 100.0;
-      return lot;
+      double slDistance = atr * ATR_SL_Multiplier;
+      double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      
+      if(slDistance <= 0 || tickValue <= 0 || tickSize <= 0) return 0.01;
+      
+      double slPoints = slDistance / tickSize;
+      double lot = riskAmount / (slPoints * tickValue);
+      
+      double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+      double stepLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+      
+      lot = MathRound(lot / stepLot) * stepLot;
+      if(lot < minLot) lot = minLot;
+      if(lot > maxLot) lot = maxLot;
+      
+      return NormalizeDouble(lot, 2);
    }
    
    void ApplyBreakEven(CPositionTracker &pos) {
@@ -579,21 +596,30 @@ private:
    void ExecuteTrade(int type) {
       if(!CanOpenNewPosition() || CheckDailyLimits()) return;
       double entry, sl, tp;
+      
       if(type == ORDER_TYPE_BUY) CalculateBullishEntry(entry, sl, tp);
       else CalculateBearishEntry(entry, sl, tp);
+      
       double lot = RiskLot(RiskPercent, m_currentATR);
       MqlTradeRequest request = {};
       MqlTradeResult result = {};
       request.action = TRADE_ACTION_DEAL;
       request.symbol = _Symbol;
       request.volume = lot;
-      request.type = type;
+      request.type = (ENUM_ORDER_TYPE)type;
       request.price = entry;
       request.sl = sl;
       request.tp = tp;
       request.deviation = SlippagePoints;
       request.magic = m_magicNumber;
       request.comment = "BAKOME_ICT_EA";
+      
+      // FIX #1: Added dynamic filling mode detection
+      int fillFlags = (int)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+      if((fillFlags & SYMBOL_FILLING_FOK) != 0) request.type_filling = ORDER_FILLING_FOK;
+      else if((fillFlags & SYMBOL_FILLING_IOC) != 0) request.type_filling = ORDER_FILLING_IOC;
+      else request.type_filling = ORDER_FILLING_RETURN;
+      
       if(ExecuteWithRetry(request, result)) {
          LogInfo(StringFormat("Executed %s %.2f @ %.2f", (type==ORDER_TYPE_BUY)?"BUY":"SELL", lot, entry));
          m_todayTradeCount++;
