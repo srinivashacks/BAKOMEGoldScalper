@@ -342,24 +342,27 @@ private:
       ArrayResize(m_liquidityLevels, 0);
       double highBuffer[];
       double lowBuffer[];
+      datetime timeBuffer[];
       ArraySetAsSeries(highBuffer, true);
       ArraySetAsSeries(lowBuffer, true);
+      ArraySetAsSeries(timeBuffer, true);
       
       if(CopyHigh(_Symbol, PERIOD_M5, 0, LiquidityLookback, highBuffer) <= 0) return;
       if(CopyLow(_Symbol, PERIOD_M5, 0, LiquidityLookback, lowBuffer) <= 0) return;
+      if(CopyTime(_Symbol, PERIOD_M5, 0, LiquidityLookback, timeBuffer) <= 0) return;
       
-      for(int i = 3; i < LiquidityLookback; i++) {
+      for(int i = 3; i < LiquidityLookback - 2; i++) {
          if(highBuffer[i] > highBuffer[i-1] &&
             highBuffer[i] > highBuffer[i-2] &&
             highBuffer[i] > highBuffer[i+1] &&
             highBuffer[i] > highBuffer[i+2]) {
-            AddLiquidityLevel(highBuffer[i], true, iTime(_Symbol, PERIOD_M5, i));
+            AddLiquidityLevel(highBuffer[i], true, timeBuffer[i]);
          }
          if(lowBuffer[i] < lowBuffer[i-1] &&
             lowBuffer[i] < lowBuffer[i-2] &&
             lowBuffer[i] < lowBuffer[i+1] &&
             lowBuffer[i] < lowBuffer[i+2]) {
-            AddLiquidityLevel(lowBuffer[i], false, iTime(_Symbol, PERIOD_M5, i));
+            AddLiquidityLevel(lowBuffer[i], false, timeBuffer[i]);
          }
       }
       
@@ -374,15 +377,18 @@ private:
       if(!UseFairValueGaps) return;
       ArrayResize(m_fairValueGaps, 0);
       double closeBuffer[], highBuffer[], lowBuffer[];
+      datetime timeBuffer[];
       ArraySetAsSeries(closeBuffer, true);
       ArraySetAsSeries(highBuffer, true);
       ArraySetAsSeries(lowBuffer, true);
+      ArraySetAsSeries(timeBuffer, true);
       
       if(CopyClose(_Symbol, PERIOD_M5, 0, FVG_Lookback, closeBuffer) <= 0) return;
       if(CopyHigh(_Symbol, PERIOD_M5, 0, FVG_Lookback, highBuffer) <= 0) return;
       if(CopyLow(_Symbol, PERIOD_M5, 0, FVG_Lookback, lowBuffer) <= 0) return;
+      if(CopyTime(_Symbol, PERIOD_M5, 0, FVG_Lookback, timeBuffer) <= 0) return;
       
-      for(int i = 2; i < FVG_Lookback; i++) {
+      for(int i = 2; i < FVG_Lookback - 1; i++) {
          if(lowBuffer[i] > highBuffer[i-1]) {
             double gapSize = lowBuffer[i] - highBuffer[i-1];
             if(gapSize >= m_currentATR * FVG_MinSizeATR) {
@@ -390,7 +396,7 @@ private:
                ArrayResize(m_fairValueGaps, size + 1);
                m_fairValueGaps[size].topPrice = lowBuffer[i];
                m_fairValueGaps[size].bottomPrice = highBuffer[i-1];
-               m_fairValueGaps[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_fairValueGaps[size].time = timeBuffer[i];
                m_fairValueGaps[size].isBullish = true;
                m_fairValueGaps[size].filled = false;
                m_fairValueGaps[size].size = gapSize;
@@ -403,7 +409,7 @@ private:
                ArrayResize(m_fairValueGaps, size + 1);
                m_fairValueGaps[size].topPrice = highBuffer[i];
                m_fairValueGaps[size].bottomPrice = lowBuffer[i-1];
-               m_fairValueGaps[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_fairValueGaps[size].time = timeBuffer[i];
                m_fairValueGaps[size].isBullish = false;
                m_fairValueGaps[size].filled = false;
                m_fairValueGaps[size].size = gapSize;
@@ -416,15 +422,18 @@ private:
       if(!UseOrderBlocks) return;
       ArrayResize(m_orderBlocks, 0);
       double closeBuffer[], openBuffer[], highBuffer[], lowBuffer[];
+      datetime timeBuffer[];
       ArraySetAsSeries(closeBuffer, true);
       ArraySetAsSeries(openBuffer, true);
       ArraySetAsSeries(highBuffer, true);
       ArraySetAsSeries(lowBuffer, true);
+      ArraySetAsSeries(timeBuffer, true);
       
       if(CopyClose(_Symbol, PERIOD_M5, 0, 50, closeBuffer) <= 0) return;
       if(CopyOpen(_Symbol, PERIOD_M5, 0, 50, openBuffer) <= 0) return;
       if(CopyHigh(_Symbol, PERIOD_M5, 0, 50, highBuffer) <= 0) return;
       if(CopyLow(_Symbol, PERIOD_M5, 0, 50, lowBuffer) <= 0) return;
+      if(CopyTime(_Symbol, PERIOD_M5, 0, 50, timeBuffer) <= 0) return;
       
       for(int i = 1; i < 50; i++) {
          if(closeBuffer[i] < openBuffer[i]) { // bearish
@@ -433,7 +442,7 @@ private:
                ArrayResize(m_orderBlocks, size + 1);
                m_orderBlocks[size].topPrice = highBuffer[i];
                m_orderBlocks[size].bottomPrice = lowBuffer[i];
-               m_orderBlocks[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].time = timeBuffer[i];
                m_orderBlocks[size].isBullish = true;
                m_orderBlocks[size].mitigated = false;
                long volumes[1];
@@ -447,7 +456,7 @@ private:
                ArrayResize(m_orderBlocks, size + 1);
                m_orderBlocks[size].topPrice = highBuffer[i];
                m_orderBlocks[size].bottomPrice = lowBuffer[i];
-               m_orderBlocks[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].time = timeBuffer[i];
                m_orderBlocks[size].isBullish = false;
                m_orderBlocks[size].mitigated = false;
                long volumes[1];
