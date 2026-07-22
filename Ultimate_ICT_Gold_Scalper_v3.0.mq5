@@ -1,6 +1,3 @@
-
-
-```cpp
 //+------------------------------------------------------------------+
 //|                                       BAKOME_Ultimate_ICT_Gold_Scalper_v3.0.mq5 |
 //|                                      BAKOME Trading Systems      |
@@ -303,7 +300,7 @@ private:
       double emaBuffer[];
       ArraySetAsSeries(emaBuffer, true);
       if(CopyBuffer(m_emaSlowHandle, 0, 0, 1, emaBuffer) <= 0) return -1;
-      double currentPrice = iClose(_Symbol, PERIOD_M5, 0);
+      double currentPrice = Close(_Symbol, PERIOD_M5, 0);
       if(currentPrice > emaBuffer[0]) return POSITION_TYPE_BUY;
       if(currentPrice < emaBuffer[0]) return POSITION_TYPE_SELL;
       return -1;
@@ -326,8 +323,8 @@ private:
       int strength = 0;
       double tolerance = m_currentATR * 0.1;
       for(int i = 1; i < 100; i++) {
-         double high = iHigh(_Symbol, PERIOD_M5, i);
-         double low = iLow(_Symbol, PERIOD_M5, i);
+         double high = High(_Symbol, PERIOD_M5, i);
+         double low = Low(_Symbol, PERIOD_M5, i);
          if(MathAbs(high - price) < tolerance || MathAbs(low - price) < tolerance)
             strength++;
       }
@@ -337,31 +334,31 @@ private:
    void UpdateLiquidityLevels() {
       ArrayResize(m_liquidityLevels, 0);
       for(int i = 3; i < LiquidityLookback; i++) {
-         if(iHigh(_Symbol, PERIOD_M5, i) > iHigh(_Symbol, PERIOD_M5, i-1) &&
-            iHigh(_Symbol, PERIOD_M5, i) > iHigh(_Symbol, PERIOD_M5, i-2) &&
-            iHigh(_Symbol, PERIOD_M5, i) > iHigh(_Symbol, PERIOD_M5, i+1) &&
-            iHigh(_Symbol, PERIOD_M5, i) > iHigh(_Symbol, PERIOD_M5, i+2)) {
-            AddLiquidityLevel(iHigh(_Symbol, PERIOD_M5, i), true, iTime(_Symbol, PERIOD_M5, i));
+         if(High(_Symbol, PERIOD_M5, i) > High(_Symbol, PERIOD_M5, i-1) &&
+            High(_Symbol, PERIOD_M5, i) > High(_Symbol, PERIOD_M5, i-2) &&
+            High(_Symbol, PERIOD_M5, i) > High(_Symbol, PERIOD_M5, i+1) &&
+            High(_Symbol, PERIOD_M5, i) > High(_Symbol, PERIOD_M5, i+2)) {
+            AddLiquidityLevel(High(_Symbol, PERIOD_M5, i), true, Time(_Symbol, PERIOD_M5, i));
          }
-         if(iLow(_Symbol, PERIOD_M5, i) < iLow(_Symbol, PERIOD_M5, i-1) &&
-            iLow(_Symbol, PERIOD_M5, i) < iLow(_Symbol, PERIOD_M5, i-2) &&
-            iLow(_Symbol, PERIOD_M5, i) < iLow(_Symbol, PERIOD_M5, i+1) &&
-            iLow(_Symbol, PERIOD_M5, i) < iLow(_Symbol, PERIOD_M5, i+2)) {
-            AddLiquidityLevel(iLow(_Symbol, PERIOD_M5, i), false, iTime(_Symbol, PERIOD_M5, i));
+         if(Low(_Symbol, PERIOD_M5, i) < Low(_Symbol, PERIOD_M5, i-1) &&
+            Low(_Symbol, PERIOD_M5, i) < Low(_Symbol, PERIOD_M5, i-2) &&
+            Low(_Symbol, PERIOD_M5, i) < Low(_Symbol, PERIOD_M5, i+1) &&
+            Low(_Symbol, PERIOD_M5, i) < Low(_Symbol, PERIOD_M5, i+2)) {
+            AddLiquidityLevel(Low(_Symbol, PERIOD_M5, i), false, Time(_Symbol, PERIOD_M5, i));
          }
       }
-      AddLiquidityLevel(iHigh(_Symbol, PERIOD_D1, 0), true, 0);
-      AddLiquidityLevel(iLow(_Symbol, PERIOD_D1, 0), false, 0);
-      AddLiquidityLevel(iHigh(_Symbol, PERIOD_W1, 0), true, 0);
-      AddLiquidityLevel(iLow(_Symbol, PERIOD_W1, 0), false, 0);
+      AddLiquidityLevel(High(_Symbol, PERIOD_D1, 0), true, 0);
+      AddLiquidityLevel(Low(_Symbol, PERIOD_D1, 0), false, 0);
+      AddLiquidityLevel(High(_Symbol, PERIOD_W1, 0), true, 0);
+      AddLiquidityLevel(Low(_Symbol, PERIOD_W1, 0), false, 0);
    }
    
    void UpdateFairValueGaps() {
       if(!UseFairValueGaps) return;
       ArrayResize(m_fairValueGaps, 0);
       for(int i = 2; i < FVG_Lookback; i++) {
-         double currentLow = iLow(_Symbol, PERIOD_M5, i);
-         double prevHigh = iHigh(_Symbol, PERIOD_M5, i-1);
+         double currentLow = Low(_Symbol, PERIOD_M5, i);
+         double prevHigh = High(_Symbol, PERIOD_M5, i-1);
          if(currentLow > prevHigh) {
             double gapSize = currentLow - prevHigh;
             if(gapSize >= m_currentATR * FVG_MinSizeATR) {
@@ -369,14 +366,14 @@ private:
                ArrayResize(m_fairValueGaps, size + 1);
                m_fairValueGaps[size].topPrice = currentLow;
                m_fairValueGaps[size].bottomPrice = prevHigh;
-               m_fairValueGaps[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_fairValueGaps[size].time = Time(_Symbol, PERIOD_M5, i);
                m_fairValueGaps[size].isBullish = true;
                m_fairValueGaps[size].filled = false;
                m_fairValueGaps[size].size = gapSize;
             }
          }
-         double currentHigh = iHigh(_Symbol, PERIOD_M5, i);
-         double prevLow = iLow(_Symbol, PERIOD_M5, i-1);
+         double currentHigh = High(_Symbol, PERIOD_M5, i);
+         double prevLow = Low(_Symbol, PERIOD_M5, i-1);
          if(currentHigh < prevLow) {
             double gapSize = prevLow - currentHigh;
             if(gapSize >= m_currentATR * FVG_MinSizeATR) {
@@ -384,7 +381,7 @@ private:
                ArrayResize(m_fairValueGaps, size + 1);
                m_fairValueGaps[size].topPrice = currentHigh;
                m_fairValueGaps[size].bottomPrice = prevLow;
-               m_fairValueGaps[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_fairValueGaps[size].time = Time(_Symbol, PERIOD_M5, i);
                m_fairValueGaps[size].isBullish = false;
                m_fairValueGaps[size].filled = false;
                m_fairValueGaps[size].size = gapSize;
@@ -397,13 +394,13 @@ private:
       if(!UseOrderBlocks) return;
       ArrayResize(m_orderBlocks, 0);
       for(int i = 1; i < 50; i++) {
-         if(iClose(_Symbol, PERIOD_M5, i) < iOpen(_Symbol, PERIOD_M5, i)) { // bearish
-            if(iClose(_Symbol, PERIOD_M5, i-1) > iOpen(_Symbol, PERIOD_M5, i-1)) { // bullish next
+         if(Close(_Symbol, PERIOD_M5, i) < Open(_Symbol, PERIOD_M5, i)) { // bearish
+            if(Close(_Symbol, PERIOD_M5, i-1) > Open(_Symbol, PERIOD_M5, i-1)) { // bullish next
                int size = ArraySize(m_orderBlocks);
                ArrayResize(m_orderBlocks, size + 1);
-               m_orderBlocks[size].topPrice = iHigh(_Symbol, PERIOD_M5, i);
-               m_orderBlocks[size].bottomPrice = iLow(_Symbol, PERIOD_M5, i);
-               m_orderBlocks[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].topPrice = High(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].bottomPrice = Low(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].time = Time(_Symbol, PERIOD_M5, i);
                m_orderBlocks[size].isBullish = true;
                m_orderBlocks[size].mitigated = false;
                long volumes[1];
@@ -411,13 +408,13 @@ private:
                   m_orderBlocks[size].volume = (double)volumes[0];
             }
          }
-         if(iClose(_Symbol, PERIOD_M5, i) > iOpen(_Symbol, PERIOD_M5, i)) { // bullish
-            if(iClose(_Symbol, PERIOD_M5, i-1) < iOpen(_Symbol, PERIOD_M5, i-1)) { // bearish next
+         if(Close(_Symbol, PERIOD_M5, i) > Open(_Symbol, PERIOD_M5, i)) { // bullish
+            if(Close(_Symbol, PERIOD_M5, i-1) < Open(_Symbol, PERIOD_M5, i-1)) { // bearish next
                int size = ArraySize(m_orderBlocks);
                ArrayResize(m_orderBlocks, size + 1);
-               m_orderBlocks[size].topPrice = iHigh(_Symbol, PERIOD_M5, i);
-               m_orderBlocks[size].bottomPrice = iLow(_Symbol, PERIOD_M5, i);
-               m_orderBlocks[size].time = iTime(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].topPrice = High(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].bottomPrice = Low(_Symbol, PERIOD_M5, i);
+               m_orderBlocks[size].time = Time(_Symbol, PERIOD_M5, i);
                m_orderBlocks[size].isBullish = false;
                m_orderBlocks[size].mitigated = false;
                long volumes[1];
@@ -433,7 +430,7 @@ private:
       ArraySetAsSeries(atrBuffer, true);
       if(CopyBuffer(m_atrHandle, 0, 0, 1, atrBuffer) > 0)
          m_currentATR = atrBuffer[0];
-      m_marketData.AddBar(TimeCurrent(), iHigh(_Symbol, PERIOD_M5, 0), iLow(_Symbol, PERIOD_M5, 0), iClose(_Symbol, PERIOD_M5, 0), iVolume(_Symbol, PERIOD_M5, 0));
+      m_marketData.AddBar(TimeCurrent(), High(_Symbol, PERIOD_M5, 0), Low(_Symbol, PERIOD_M5, 0), Close(_Symbol, PERIOD_M5, 0), Volume(_Symbol, PERIOD_M5, 0));
    }
    
    bool CheckDailyLimits() {
