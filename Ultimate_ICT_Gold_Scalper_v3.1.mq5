@@ -1,690 +1,520 @@
 //+------------------------------------------------------------------+
-//|                                BAKOME_Ultimate_ICT_Gold_Scalper_v3.0.mq5 |
-//|                                      BAKOME Trading Systems      |
-//|                                                      Version 3.1 |
+//|                               Ultimate_ICT_Gold_Scalper_v3.1.mq5 |
 //+------------------------------------------------------------------+
-#property copyright "BAKOME – Fabrice Kitoko"
+#property copyright "BAKOME"
+#property link      ""
 #property version   "3.1"
-#property description "Advanced ICT Gold Scalper with FVG, Order Blocks, Silver Bullet"
-#property link      "https://github.com/BAKOME-Hub"
-#property strict
 
-#include <Trade/Trade.mqh>
-#include <Trade/PositionInfo.mqh>
-#include <Trade/SymbolInfo.mqh>
-#include <Trade/AccountInfo.mqh>
-#include <Trade/DealInfo.mqh>
-#include <Math/Stat/Math.mqh>
+#include <Trade\Trade.mqh>
+#include <Trade\PositionInfo.mqh>
+#include <Trade\SymbolInfo.mqh>
 
 //+------------------------------------------------------------------+
-//| Input Parameters                                                 |
+//| INPUT PARAMETERS                                                 |
 //+------------------------------------------------------------------+
+//--- Risk Management
 input group "=== Risk Management ==="
-input double RiskPercent            = 1.0;      // Risk per trade (%)
-input double MaxDailyRiskPercent    = 5.0;      // Max daily loss (%)
-input double MaxDailyProfitPercent  = 8.0;      // Daily profit target (%)
-input int    MaxPositions           = 2;        // Maximum concurrent positions
-input int    MaxDailyTrades         = 10;       // Maximum trades per day
+input double RiskPercent             = 1.0;   // Risk per trade (% of balance)
+input double MaxDailyRiskPercent     = 5.0;   // Max daily loss (% of balance)
+input double MaxDailyProfitPercent   = 8.0;   // Max daily profit (% of balance)
+input int    MaxPositions            = 2;     // Max open positions
+input int    MaxDailyTrades          = 10;    // Max trades per day
 
+//--- XAUUSD Specific Settings
 input group "=== XAUUSD Specific Settings ==="
-input double MinATR_Points          = 100.0;    // Minimum ATR for Gold (points)
-input double MaxSpreadPoints        = 50.0;     // Maximum spread (points)
-input double ATR_SL_Multiplier      = 2.0;      // Stop Loss ATR multiplier
-input double ATR_TP_Multiplier      = 3.0;      // Take Profit ATR multiplier
+input double MinATR_Points           = 100.0; // Min ATR required to trade (in points)
+input double MaxSpreadPoints         = 50.0;  // Max allowed spread (in points)
+input double ATR_SL_Multiplier       = 2.0;   // Stop Loss = ATR * Multiplier
+input double ATR_TP_Multiplier       = 3.0;   // Take Profit = ATR * Multiplier
 
+//--- ICT Strategy Parameters
 input group "=== ICT Strategy Parameters ==="
-input bool   UseLiquiditySweeps     = true;     // Use liquidity sweeps
-input bool   UseFairValueGaps       = true;     // Use Fair Value Gaps
-input bool   UseOrderBlocks         = true;     // Use Order Blocks
-input bool   UseSilverBullet        = true;     // Use Silver Bullet
-input int    LiquidityLookback      = 50;       // Bars for liquidity lookback
-input int    FVG_Lookback           = 20;       // Bars for FVG lookback
-input double FVG_MinSizeATR         = 0.5;      // Minimum FVG size (x ATR)
+input bool   UseLiquiditySweeps      = true;  // Enable Liquidity Sweeps
+input bool   UseFairValueGaps        = true;  // Enable Fair Value Gap entries
+input bool   UseOrderBlocks          = true;  // Enable Order Block validation
+input bool   UseSilverBullet         = true;  // Filter trades by Silver Bullet time
+input int    LiquidityLookback       = 50;    // Bars to scan for Liquidity High/Low
+input int    FVG_Lookback            = 20;    // Bars to scan for FVG
+input double FVG_MinSizeATR          = 0.5;   // Minimum FVG size relative to ATR
 
+//--- Session Settings
 input group "=== Session Settings ==="
-input bool   TradeAsianSession      = false;    // Trade Asian session
-input bool   TradeLondonSession     = true;     // Trade London session
-input bool   TradeNewYorkSession    = true;     // Trade New York session
-input int    LondonStartHour        = 7;        // London session start
-input int    NewYorkStartHour       = 13;       // New York session start
+input bool   TradeAsianSession       = false; // Trade Asian Session
+input bool   TradeLondonSession      = true;  // Trade London Session
+input bool   TradeNewYorkSession     = true;  // Trade New York Session
+input int    LondonStartHour         = 7;     // London start hour (Server Time)
+input int    NewYorkStartHour        = 13;    // NY start hour (Server Time)
 
+//--- Silver Bullet Windows
 input group "=== Silver Bullet Windows ==="
-input bool   LondonSilverBullet     = true;
-input int    LondonKillZoneStart    = 8;
-input int    LondonKillZoneEnd      = 9;
-input bool   NewYorkSilverBullet    = true;
-input int    NYKillZoneStart        = 15;
-input int    NYKillZoneEnd          = 16;
+input bool   LondonSilverBullet      = true;  // Enable London Silver Bullet
+input int    LondonKillZoneStart     = 8;     // London Silver Bullet Start Hour
+input int    LondonKillZoneEnd       = 9;     // London Silver Bullet End Hour
+input bool   NewYorkSilverBullet     = true;  // Enable NY Silver Bullet
+input int    NYKillZoneStart         = 15;    // NY Silver Bullet Start Hour
+input int    NYKillZoneEnd           = 16;    // NY Silver Bullet End Hour
 
+//--- Position Management
 input group "=== Position Management ==="
-input bool   UseBreakEven           = true;
-input double BE_TriggerATR          = 1.0;
-input bool   UseTrailingStop        = true;
-input double Trail_StartATR         = 1.5;
-input double Trail_StepATR          = 0.5;
-input bool   UsePartialClose        = true;
-input double PartialClosePercent    = 50.0;
-input double PartialCloseTriggerATR = 1.0;
+input bool   UseBreakEven            = true;  // Move SL to Break-Even
+input double BE_TriggerATR           = 1.0;   // Move to BE when profit >= ATR * Multiplier
+input bool   UseTrailingStop         = true;  // Enable Trailing Stop
+input double Trail_StartATR          = 1.5;   // Start trailing when profit >= ATR * Multiplier
+input double Trail_StepATR           = 0.5;   // Trailing step distance relative to ATR
+input bool   UsePartialClose         = true;  // Enable Partial Close
+input double PartialClosePercent     = 50.0;  // Volume % to close partially
+input double PartialCloseTriggerATR  = 1.0;   // Partial close trigger relative to ATR
 
+//--- Execution Settings
 input group "=== Execution Settings ==="
-input int    SlippagePoints         = 10;
-input int    OrderRetryCount        = 5;
-input int    OrderRetryDelayMs      = 200;
+input int    SlippagePoints          = 10;    // Slippage tolerance in points
+input int    OrderRetryCount         = 5;     // Execution retry attempts
+input int    OrderRetryDelayMs       = 200;   // Delay between retries in ms
 
+//--- System Settings
 input group "=== System Settings ==="
-enum ENUM_LOG_LEVEL {
-   LOG_NONE = 0,
-   LOG_ERROR = 1,
-   LOG_WARNING = 2,
-   LOG_INFO = 3,
-   LOG_DEBUG = 4
-};
-input ENUM_LOG_LEVEL LogLevel          = LOG_INFO;
-input bool           UseAsyncExecution = true;
-input bool           EnablePerformanceMode = true;
+input int    LogLevel                = 3;     // Log Verbosity Level
+input bool   UseAsyncExecution       = true;  // Use Async Order Execution
+input bool   EnablePerformanceMode   = true;  // Only compute on New Bar
 
 //+------------------------------------------------------------------+
-//| Structures and Classes                                           |
+//| GLOBAL OBJECTS AND VARIABLES                                     |
 //+------------------------------------------------------------------+
+CTrade         m_trade;
+CPositionInfo  m_position;
+CSymbolInfo    m_symbol;
 
-class CMarketData {
-public:
-   datetime time[10000];
-   double   high[10000];
-   double   low[10000];
-   double   close[10000];
-   double   volume[10000];
-   int      dataIndex;
-   CMarketData() : dataIndex(0) {}
-   void AddBar(datetime t, double h, double l, double c, double v) {
-      int idx = dataIndex % 10000;
-      time[idx] = t;
-      high[idx] = h;
-      low[idx] = l;
-      close[idx] = c;
-      volume[idx] = v;
-      dataIndex++;
-   }
-};
+int            m_handleATR;
+ulong          m_magicNumber       = 2645928;
+datetime       m_lastBarTime       = 0;
+datetime       m_lastCheckDay      = 0;
+bool           m_targetLoggedToday = false;
+double         m_dailyProfit       = 0.0;
+int            m_dailyTradesCount  = 0;
 
-struct LiquidityLevel {
-   double   price;
-   datetime time;
-   int      strength;
-   bool     isHigh;
-   bool     swept;
-   double   volume;
+// Tracker structure for positions
+struct PositionTracker {
+   ulong ticket;
+   bool  breakEvenSet;
+   bool  partiallyClosed;
 };
-
-struct FairValueGap {
-   double   topPrice;
-   double   bottomPrice;
-   datetime time;
-   bool     isBullish;
-   bool     filled;
-   double   size;
-};
-
-struct OrderBlock {
-   double   topPrice;
-   double   bottomPrice;
-   datetime time;
-   bool     isBullish;
-   bool     mitigated;
-   double   volume;
-};
-
-class CPositionTracker {
-public:
-   ulong    ticket;
-   datetime openTime;
-   double   openPrice;
-   double   originalSL;
-   double   originalTP;
-   bool     partialClosed;
-   bool     breakEvenSet;
-   bool     trailingActive;
-   double   peakProfit;
-   double   currentRR;
-   CPositionTracker() { Reset(); }
-   void Reset() {
-      ticket = 0;
-      openTime = 0;
-      openPrice = 0;
-      originalSL = 0;
-      originalTP = 0;
-      partialClosed = false;
-      breakEvenSet = false;
-      trailingActive = false;
-      peakProfit = 0;
-      currentRR = 0;
-   }
-};
-
-template<typename T>
-class CObjectPool {
-private:
-   T*  m_pool[];
-   int m_poolSize;
-   int m_nextAvailable;
-public:
-   CObjectPool(int size = 100) {
-      m_poolSize = size;
-      ArrayResize(m_pool, m_poolSize);
-      m_nextAvailable = 0;
-      for(int i = 0; i < m_poolSize; i++)
-         m_pool[i] = new T();
-   }
-   ~CObjectPool() {
-      for(int i = 0; i < m_poolSize; i++)
-         delete m_pool[i];
-   }
-   T* Acquire() {
-      if(m_nextAvailable >= m_poolSize) {
-         int oldSize = m_poolSize;
-         m_poolSize *= 2;
-         ArrayResize(m_pool, m_poolSize);
-         for(int i = oldSize; i < m_poolSize; i++)
-            m_pool[i] = new T();
-      }
-      return m_pool[m_nextAvailable++];
-   }
-   void Release(T* obj) {
-      obj.Reset();
-      m_nextAvailable--;
-   }
-};
+PositionTracker m_trackers[];
 
 //+------------------------------------------------------------------+
-//| Main EA Class                                                    |
+//| EXPERT INITIALIZATION FUNCTION                                   |
 //+------------------------------------------------------------------+
-class CUltimateICTGoldScalper {
-private:
-   CTrade         m_trade;
-   CPositionInfo  m_position;
-   CSymbolInfo    m_symbol;
-   CAccountInfo   m_account;
-   int            m_atrHandle;
-   int            m_emaFastHandle;
-   int            m_emaSlowHandle;
-   LiquidityLevel m_liquidityLevels[];
-   FairValueGap   m_fairValueGaps[];
-   OrderBlock     m_orderBlocks[];
-   CMarketData    m_marketData;
-   CObjectPool<CPositionTracker>* m_positionPool;
-   CPositionTracker*               m_activePositions[];
-   double         m_dayStartBalance;
-   int            m_todayTradeCount;
-   datetime       m_lastTradeTime;
-   double         m_currentATR;
-   long           m_magicNumber;
-   bool           m_initialized;
+int OnInit() {
+   if(!m_symbol.Name(_Symbol)) {
+      Print("[ERROR] Failed to initialize symbol info.");
+      return INIT_FAILED;
+   }
+   m_symbol.Refresh();
+
+   m_trade.SetExpertMagicNumber(m_magicNumber);
+   m_trade.SetDeviationInPoints(SlippagePoints);
    
-   void LogError(string msg)   { if(LogLevel >= LOG_ERROR)   Print("[ERROR] ", msg); }
-   void LogWarning(string msg) { if(LogLevel >= LOG_WARNING) Print("[WARN] ",  msg); }
-   void LogInfo(string msg)    { if(LogLevel >= LOG_INFO)    Print("[INFO] ",  msg); }
-   void LogDebug(string msg)   { if(LogLevel >= LOG_DEBUG)   Print("[DEBUG] ", msg); }
-   
-   long GenerateMagicNumber() {
-      string str = _Symbol + IntegerToString(Period());
-      uchar arr[];
-      StringToCharArray(str, arr);
-      long hash = 0;
-      for(int i = 0; i < ArraySize(arr); i++)
-         hash = (hash * 31 + arr[i]) % 9999999;
-      return 100000 + hash;
+   if(UseAsyncExecution) {
+      m_trade.SetAsyncMode(true);
    }
+
+   // Initialize ATR Indicator
+   m_handleATR = iATR(_Symbol, _Period, 14);
+   if(m_handleATR == INVALID_HANDLE) {
+      Print("[ERROR] Failed to create ATR indicator handle.");
+      return INIT_FAILED;
+   }
+
+   Print("[INFO] BAKOME EA initialized successfully. Magic: ", m_magicNumber);
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+//| EXPERT DEINITIALIZATION FUNCTION                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason) {
+   if(m_handleATR != INVALID_HANDLE) {
+      IndicatorRelease(m_handleATR);
+   }
+   Print("[INFO] EA Deinitialized. Reason code: ", reason);
+}
+
+//+------------------------------------------------------------------+
+//| UTILITY & CALCULATION FUNCTIONS                                  |
+//+------------------------------------------------------------------+
+
+// Fetch current ATR value
+double GetCurrentATR() {
+   double atr[1];
+   if(CopyBuffer(m_handleATR, 0, 0, 1, atr) > 0) {
+      return atr[0];
+   }
+   return 0.0;
+}
+
+// Check for new bar (Performance Mode)
+bool IsNewBar() {
+   datetime currentBarTime = iTime(_Symbol, _Period, 0);
+   if(currentBarTime != m_lastBarTime) {
+      m_lastBarTime = currentBarTime;
+      return true;
+   }
+   return false;
+}
+
+// Midnight Daily Reset Logic
+void CheckDailyReset() {
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
    
-   bool IsRecoverableError(int errorCode) {
-      switch(errorCode) {
-         case TRADE_RETCODE_REQUOTE:
-         case TRADE_RETCODE_PRICE_CHANGED:
-         case TRADE_RETCODE_TIMEOUT:
-         case TRADE_RETCODE_CONNECTION:
-            return true;
-         default:
-            return false;
+   // Normalize timestamp to midnight (00:00:00)
+   datetime todayMidnight = StructToTime(dt) - (dt.hour * 3600 + dt.min * 60 + dt.sec);
+   
+   if(todayMidnight != m_lastCheckDay) {
+      m_dailyProfit = 0.0;
+      m_dailyTradesCount = 0;
+      m_lastCheckDay = todayMidnight;
+      m_targetLoggedToday = false;
+      ArrayResize(m_trackers, 0); // Reset local trackers
+      Print("[INFO] New trading day started. Daily metrics reset.");
+   }
+}
+
+// Calculate cumulative Daily Profit and Trade Count from Account History
+void UpdateDailyStats() {
+   m_dailyProfit = 0.0;
+   m_dailyTradesCount = 0;
+
+   if(!HistorySelect(m_lastCheckDay, TimeCurrent())) return;
+
+   int totalDeals = HistoryDealsTotal();
+   for(int i = 0; i < totalDeals; i++) {
+      ulong ticket = HistoryDealGetTicket(i);
+      if(ticket <= 0) continue;
+
+      if(HistoryDealGetInteger(ticket, DEAL_MAGIC) == m_magicNumber &&
+         HistoryDealGetInteger(ticket, DEAL_ENTRY) == DEAL_ENTRY_OUT) {
+         
+         m_dailyProfit += HistoryDealGetDouble(ticket, DEAL_PROFIT);
+         m_dailyProfit += HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+         m_dailyProfit += HistoryDealGetDouble(ticket, DEAL_SWAP);
+         m_dailyTradesCount++;
       }
    }
+}
+
+// Calculate Position Sizing based on Risk %
+double CalculateLotSize(double slDistancePrice) {
+   if(slDistancePrice <= 0) return m_symbol.LotsMin();
+
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double riskAmount = balance * (RiskPercent / 100.0);
+   double tickSize = m_symbol.TickSize();
+   double tickValue = m_symbol.TickValue();
+
+   if(tickSize <= 0 || tickValue <= 0) return m_symbol.LotsMin();
+
+   double lossPerLot = (slDistancePrice / tickSize) * tickValue;
+   if(lossPerLot <= 0) return m_symbol.LotsMin();
+
+   double lotSize = riskAmount / lossPerLot;
    
-   bool ExecuteWithRetry(MqlTradeRequest &request, MqlTradeResult &result) {
-      for(int attempt = 0; attempt < OrderRetryCount; attempt++) {
-         ZeroMemory(result);
-         if(OrderSend(request, result)) {
-            if(result.retcode == TRADE_RETCODE_DONE) return true;
-         }
-         if(!IsRecoverableError(result.retcode)) break;
-         Sleep(OrderRetryDelayMs * (int)MathPow(2, attempt));
-      }
-      return false;
+   // Step and Limit rounding
+   double lotStep = m_symbol.LotsStep();
+   lotSize = MathFloor(lotSize / lotStep) * lotStep;
+   lotSize = MathMax(m_symbol.LotsMin(), MathMin(m_symbol.LotsMax(), lotSize));
+
+   return lotSize;
+}
+
+// Check session hours & Silver Bullet Killzones
+bool IsTradingAllowedByTime() {
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int hour = dt.hour;
+
+   // 1. Check Silver Bullet Windows if forced
+   if(UseSilverBullet) {
+      bool inLondonSB = LondonSilverBullet && (hour >= LondonKillZoneStart && hour < LondonKillZoneEnd);
+      bool inNYSB = NewYorkSilverBullet && (hour >= NYKillZoneStart && hour < NYKillZoneEnd);
+      if(!inLondonSB && !inNYSB) return false;
    }
-   
-   double GetAverageVolume(int periods) {
-      long volumes[];
-      ArraySetAsSeries(volumes, true);
-      if(CopyTickVolume(_Symbol, PERIOD_M5, 0, periods, volumes) <= 0) return 0;
-      double sum = 0;
-      for(int i = 0; i < periods; i++) sum += (double)volumes[i];
-      return sum / periods;
+
+   // 2. Check Standard Sessions
+   bool inLondon = TradeLondonSession && (hour >= LondonStartHour && hour < LondonStartHour + 8);
+   bool inNY     = TradeNewYorkSession && (hour >= NewYorkStartHour && hour < NewYorkStartHour + 8);
+   bool inAsia   = TradeAsianSession && (hour >= 0 && hour < 8);
+
+   return (inLondon || inNY || inAsia);
+}
+
+//+------------------------------------------------------------------+
+//| ICT STRATEGY ANALYSIS                                            |
+//+------------------------------------------------------------------+
+
+// Detect Liquidity Sweeps (+1 = Bullish Sweep of Low, -1 = Bearish Sweep of High)
+int CheckLiquiditySweep() {
+   if(!UseLiquiditySweeps) return 0;
+
+   double lowestLow = iLow(_Symbol, _Period, iLowest(_Symbol, _Period, MODE_LOW, LiquidityLookback, 2));
+   double highestHigh = iHigh(_Symbol, _Period, iHighest(_Symbol, _Period, MODE_HIGH, LiquidityLookback, 2));
+
+   double currentLow = iLow(_Symbol, _Period, 1);
+   double currentHigh = iHigh(_Symbol, _Period, 1);
+   double currentClose = iClose(_Symbol, _Period, 1);
+
+   // Bullish Sweep: Price swept below previous low but closed back above it
+   if(currentLow < lowestLow && currentClose > lowestLow) {
+      return 1;
    }
-   
-   double GetCurrentVolumeRatio() {
-      long volumes[];
-      if(CopyTickVolume(_Symbol, PERIOD_M5, 0, 1, volumes) <= 0) return 1.0;
-      double currentVolume = (double)volumes[0];
-      double avgVolume = GetAverageVolume(20);
-      if(avgVolume > 0) return currentVolume / avgVolume;
-      return 1.0;
-   }
-   
-   bool IsInKillZone() {
-      if(!UseSilverBullet) return false;
-      MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
-      int hour = dt.hour;
-      if(LondonSilverBullet && hour >= LondonKillZoneStart && hour < LondonKillZoneEnd) return true;
-      if(NewYorkSilverBullet && hour >= NYKillZoneStart && hour < NYKillZoneEnd) return true;
-      return false;
-   }
-   
-   bool IsInTradingSession() {
-      MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
-      int hour = dt.hour;
-      if(TradeAsianSession && hour >= 0 && hour < 6) return true;
-      if(TradeLondonSession && hour >= LondonStartHour && hour < LondonStartHour+4) return true;
-      if(TradeNewYorkSession && hour >= NewYorkStartHour && hour < NewYorkStartHour+4) return true;
-      return false;
-   }
-   
-   ENUM_POSITION_TYPE GetMarketBias() {
-      double emaBuffer[];
-      ArraySetAsSeries(emaBuffer, true);
-      if(CopyBuffer(m_emaSlowHandle, 0, 0, 1, emaBuffer) <= 0) return -1;
-      double closeBuffer[];
-      ArraySetAsSeries(closeBuffer, true);
-      if(CopyClose(_Symbol, PERIOD_M5, 0, 1, closeBuffer) <= 0) return -1;
-      double currentPrice = closeBuffer[0];
-      if(currentPrice > emaBuffer[0]) return POSITION_TYPE_BUY;
-      if(currentPrice < emaBuffer[0]) return POSITION_TYPE_SELL;
+   // Bearish Sweep: Price swept above previous high but closed back below it
+   if(currentHigh > highestHigh && currentClose < highestHigh) {
       return -1;
    }
-   
-   void AddLiquidityLevel(double price, bool isHigh, datetime time) {
-      int size = ArraySize(m_liquidityLevels);
-      ArrayResize(m_liquidityLevels, size + 1);
-      m_liquidityLevels[size].price = price;
-      m_liquidityLevels[size].isHigh = isHigh;
-      m_liquidityLevels[size].time = time;
-      m_liquidityLevels[size].swept = false;
-      m_liquidityLevels[size].strength = CalculateLevelStrength(price);
-      long volumes[1];
-      if(CopyTickVolume(_Symbol, PERIOD_M5, 0, 1, volumes) > 0)
-         m_liquidityLevels[size].volume = (double)volumes[0];
-   }
-   
-   int CalculateLevelStrength(double price) {
-      int strength = 0;
-      double tolerance = m_currentATR * 0.1;
-      double highBuffer[], lowBuffer[];
-      ArraySetAsSeries(highBuffer, true);
-      ArraySetAsSeries(lowBuffer, true);
-      if(CopyHigh(_Symbol, PERIOD_M5, 0, 100, highBuffer) <= 0) return 0;
-      if(CopyLow(_Symbol, PERIOD_M5, 0, 100, lowBuffer) <= 0) return 0;
-      for(int i = 0; i < 100; i++) {
-         if(MathAbs(highBuffer[i] - price) < tolerance || MathAbs(lowBuffer[i] - price) < tolerance)
-            strength++;
+
+   return 0;
+}
+
+// Detect Fair Value Gap (+1 = Bullish FVG, -1 = Bearish FVG)
+int CheckFVG(double atr) {
+   if(!UseFairValueGaps) return 0;
+
+   double minFVGSize = atr * FVG_MinSizeATR;
+
+   // Check last few candles for FVG gap pattern
+   for(int i = 1; i <= FVG_Lookback; i++) {
+      double high3 = iHigh(_Symbol, _Period, i + 2);
+      double low1  = iLow(_Symbol, _Period, i);
+
+      // Bullish FVG: Low of candle 1 is higher than High of candle 3
+      if(low1 - high3 >= minFVGSize) {
+         return 1;
       }
-      return strength;
-   }
-   
-   void UpdateLiquidityLevels() {
-      ArrayResize(m_liquidityLevels, 0);
-      double highBuffer[];
-      double lowBuffer[];
-      datetime timeBuffer[];
-      ArraySetAsSeries(highBuffer, true);
-      ArraySetAsSeries(lowBuffer, true);
-      ArraySetAsSeries(timeBuffer, true);
-      
-      if(CopyHigh(_Symbol, PERIOD_M5, 0, LiquidityLookback, highBuffer) <= 0) return;
-      if(CopyLow(_Symbol, PERIOD_M5, 0, LiquidityLookback, lowBuffer) <= 0) return;
-      if(CopyTime(_Symbol, PERIOD_M5, 0, LiquidityLookback, timeBuffer) <= 0) return;
-      
-      for(int i = 3; i < LiquidityLookback - 2; i++) {
-         if(highBuffer[i] > highBuffer[i-1] &&
-            highBuffer[i] > highBuffer[i-2] &&
-            highBuffer[i] > highBuffer[i+1] &&
-            highBuffer[i] > highBuffer[i+2]) {
-            AddLiquidityLevel(highBuffer[i], true, timeBuffer[i]);
-         }
-         if(lowBuffer[i] < lowBuffer[i-1] &&
-            lowBuffer[i] < lowBuffer[i-2] &&
-            lowBuffer[i] < lowBuffer[i+1] &&
-            lowBuffer[i] < lowBuffer[i+2]) {
-            AddLiquidityLevel(lowBuffer[i], false, timeBuffer[i]);
-         }
-      }
-      
-      double dailyHigh[], dailyLow[], weeklyHigh[], weeklyLow[];
-      if(CopyHigh(_Symbol, PERIOD_D1, 0, 1, dailyHigh) > 0) AddLiquidityLevel(dailyHigh[0], true, 0);
-      if(CopyLow(_Symbol, PERIOD_D1, 0, 1, dailyLow) > 0) AddLiquidityLevel(dailyLow[0], false, 0);
-      if(CopyHigh(_Symbol, PERIOD_W1, 0, 1, weeklyHigh) > 0) AddLiquidityLevel(weeklyHigh[0], true, 0);
-      if(CopyLow(_Symbol, PERIOD_W1, 0, 1, weeklyLow) > 0) AddLiquidityLevel(weeklyLow[0], false, 0);
-   }
-   
-   void UpdateFairValueGaps() {
-      if(!UseFairValueGaps) return;
-      ArrayResize(m_fairValueGaps, 0);
-      double closeBuffer[], highBuffer[], lowBuffer[];
-      datetime timeBuffer[];
-      ArraySetAsSeries(closeBuffer, true);
-      ArraySetAsSeries(highBuffer, true);
-      ArraySetAsSeries(lowBuffer, true);
-      ArraySetAsSeries(timeBuffer, true);
-      
-      if(CopyClose(_Symbol, PERIOD_M5, 0, FVG_Lookback, closeBuffer) <= 0) return;
-      if(CopyHigh(_Symbol, PERIOD_M5, 0, FVG_Lookback, highBuffer) <= 0) return;
-      if(CopyLow(_Symbol, PERIOD_M5, 0, FVG_Lookback, lowBuffer) <= 0) return;
-      if(CopyTime(_Symbol, PERIOD_M5, 0, FVG_Lookback, timeBuffer) <= 0) return;
-      
-      for(int i = 2; i < FVG_Lookback - 1; i++) {
-         if(lowBuffer[i] > highBuffer[i-1]) {
-            double gapSize = lowBuffer[i] - highBuffer[i-1];
-            if(gapSize >= m_currentATR * FVG_MinSizeATR) {
-               int size = ArraySize(m_fairValueGaps);
-               ArrayResize(m_fairValueGaps, size + 1);
-               m_fairValueGaps[size].topPrice = lowBuffer[i];
-               m_fairValueGaps[size].bottomPrice = highBuffer[i-1];
-               m_fairValueGaps[size].time = timeBuffer[i];
-               m_fairValueGaps[size].isBullish = true;
-               m_fairValueGaps[size].filled = false;
-               m_fairValueGaps[size].size = gapSize;
-            }
-         }
-         if(highBuffer[i] < lowBuffer[i-1]) {
-            double gapSize = lowBuffer[i-1] - highBuffer[i];
-            if(gapSize >= m_currentATR * FVG_MinSizeATR) {
-               int size = ArraySize(m_fairValueGaps);
-               ArrayResize(m_fairValueGaps, size + 1);
-               m_fairValueGaps[size].topPrice = highBuffer[i];
-               m_fairValueGaps[size].bottomPrice = lowBuffer[i-1];
-               m_fairValueGaps[size].time = timeBuffer[i];
-               m_fairValueGaps[size].isBullish = false;
-               m_fairValueGaps[size].filled = false;
-               m_fairValueGaps[size].size = gapSize;
-            }
-         }
+
+      double low3  = iLow(_Symbol, _Period, i + 2);
+      double high1 = iHigh(_Symbol, _Period, i);
+
+      // Bearish FVG: High of candle 1 is lower than Low of candle 3
+      if(low3 - high1 >= minFVGSize) {
+         return -1;
       }
    }
+
+   return 0;
+}
+
+// Detect Order Block Confluence
+int CheckOrderBlock() {
+   if(!UseOrderBlocks) return 0;
+
+   double close1 = iClose(_Symbol, _Period, 1);
+   double open1  = iOpen(_Symbol, _Period, 1);
+   double close2 = iClose(_Symbol, _Period, 2);
+   double open2  = iOpen(_Symbol, _Period, 2);
+
+   // Bullish Order Block: Last down candle before strong up expansion
+   if(close2 < open2 && close1 > open1 && (close1 - open1) > (open2 - close2) * 1.5) {
+      return 1;
+   }
+   // Bearish Order Block: Last up candle before strong down expansion
+   if(close2 > open2 && close1 < open1 && (open1 - close1) > (close2 - open2) * 1.5) {
+      return -1;
+   }
+
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+//| POSITION MANAGEMENT (Break-Even, Trailing Stop, Partial Close)   |
+//+------------------------------------------------------------------+
+void ManageOpenPositions(double currentATR) {
+   int totalPositions = PositionsTotal();
    
-   void UpdateOrderBlocks() {
-      if(!UseOrderBlocks) return;
-      ArrayResize(m_orderBlocks, 0);
-      double closeBuffer[], openBuffer[], highBuffer[], lowBuffer[];
-      datetime timeBuffer[];
-      ArraySetAsSeries(closeBuffer, true);
-      ArraySetAsSeries(openBuffer, true);
-      ArraySetAsSeries(highBuffer, true);
-      ArraySetAsSeries(lowBuffer, true);
-      ArraySetAsSeries(timeBuffer, true);
-      
-      if(CopyClose(_Symbol, PERIOD_M5, 0, 50, closeBuffer) <= 0) return;
-      if(CopyOpen(_Symbol, PERIOD_M5, 0, 50, openBuffer) <= 0) return;
-      if(CopyHigh(_Symbol, PERIOD_M5, 0, 50, highBuffer) <= 0) return;
-      if(CopyLow(_Symbol, PERIOD_M5, 0, 50, lowBuffer) <= 0) return;
-      if(CopyTime(_Symbol, PERIOD_M5, 0, 50, timeBuffer) <= 0) return;
-      
-      for(int i = 1; i < 50; i++) {
-         if(closeBuffer[i] < openBuffer[i]) { // bearish
-            if(closeBuffer[i-1] > openBuffer[i-1]) { // bullish next
-               int size = ArraySize(m_orderBlocks);
-               ArrayResize(m_orderBlocks, size + 1);
-               m_orderBlocks[size].topPrice = highBuffer[i];
-               m_orderBlocks[size].bottomPrice = lowBuffer[i];
-               m_orderBlocks[size].time = timeBuffer[i];
-               m_orderBlocks[size].isBullish = true;
-               m_orderBlocks[size].mitigated = false;
-               long volumes[1];
-               if(CopyTickVolume(_Symbol, PERIOD_M5, i, 1, volumes) > 0)
-                  m_orderBlocks[size].volume = (double)volumes[0];
-            }
+   for(int i = totalPositions - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+
+      if(!m_position.SelectByTicket(ticket)) continue;
+      if(m_position.Magic() != m_magicNumber || m_position.Symbol() != _Symbol) continue;
+
+      // Ensure tracker exists for this position
+      int trackerIdx = -1;
+      for(int t = 0; t < ArraySize(m_trackers); t++) {
+         if(m_trackers[t].ticket == ticket) {
+            trackerIdx = t;
+            break;
          }
-         if(closeBuffer[i] > openBuffer[i]) { // bullish
-            if(closeBuffer[i-1] < openBuffer[i-1]) { // bearish next
-               int size = ArraySize(m_orderBlocks);
-               ArrayResize(m_orderBlocks, size + 1);
-               m_orderBlocks[size].topPrice = highBuffer[i];
-               m_orderBlocks[size].bottomPrice = lowBuffer[i];
-               m_orderBlocks[size].time = timeBuffer[i];
-               m_orderBlocks[size].isBullish = false;
-               m_orderBlocks[size].mitigated = false;
-               long volumes[1];
-               if(CopyTickVolume(_Symbol, PERIOD_M5, i, 1, volumes) > 0)
-                  m_orderBlocks[size].volume = (double)volumes[0];
+      }
+      if(trackerIdx == -1) {
+         int newSize = ArraySize(m_trackers) + 1;
+         ArrayResize(m_trackers, newSize);
+         trackerIdx = newSize - 1;
+         m_trackers[trackerIdx].ticket = ticket;
+         m_trackers[trackerIdx].breakEvenSet = false;
+         m_trackers[trackerIdx].partiallyClosed = false;
+      }
+
+      // FIXED: Correct MQL5 standard library method PriceOpen()
+      double entryPrice = m_position.PriceOpen();
+      double currentSL  = m_position.StopLoss();
+      double currentTP  = m_position.TakeProfit();
+      double currentPrice = (m_position.PositionType() == POSITION_TYPE_BUY) ? m_symbol.Bid() : m_symbol.Ask();
+      
+      double profitPoints = 0.0;
+      if(m_position.PositionType() == POSITION_TYPE_BUY) {
+         profitPoints = currentPrice - entryPrice;
+      } else {
+         profitPoints = entryPrice - currentPrice;
+      }
+
+      // 1. Break-Even Management
+      if(UseBreakEven && !m_trackers[trackerIdx].breakEvenSet) {
+         if(profitPoints >= BE_TriggerATR * currentATR) {
+            double newSL = entryPrice;
+            if(m_trade.PositionModify(ticket, newSL, currentTP)) {
+               m_trackers[trackerIdx].breakEvenSet = true;
+               Print("[INFO] Break-Even applied for ticket #", ticket);
             }
          }
       }
-   }
-   
-   void UpdateMarketData() {
-      double atrBuffer[];
-      ArraySetAsSeries(atrBuffer, true);
-      if(CopyBuffer(m_atrHandle, 0, 0, 1, atrBuffer) > 0)
-         m_currentATR = atrBuffer[0];
-      
-      double highBuf[], lowBuf[], closeBuf[];
-      long volumeBuf[];
-      ArraySetAsSeries(highBuf, true);
-      ArraySetAsSeries(lowBuf, true);
-      ArraySetAsSeries(closeBuf, true);
-      ArraySetAsSeries(volumeBuf, true);
-      
-      if(CopyHigh(_Symbol, PERIOD_M5, 0, 1, highBuf) > 0 &&
-         CopyLow(_Symbol, PERIOD_M5, 0, 1, lowBuf) > 0 &&
-         CopyClose(_Symbol, PERIOD_M5, 0, 1, closeBuf) > 0 &&
-         CopyTickVolume(_Symbol, PERIOD_M5, 0, 1, volumeBuf) > 0) {
-         m_marketData.AddBar(TimeCurrent(), highBuf[0], lowBuf[0], closeBuf[0], (double)volumeBuf[0]);
-      }
-   }
-   
-   bool CheckDailyLimits() {
-      if(m_todayTradeCount >= MaxDailyTrades) return true;
-      double currentEquity = m_account.Equity();
-      double dailyPL = (currentEquity - m_dayStartBalance) / m_dayStartBalance * 100;
-      if(dailyPL <= -MaxDailyRiskPercent) { LogWarning("Daily loss limit reached"); return true; }
-      if(dailyPL >= MaxDailyProfitPercent) { LogInfo("Daily profit target reached"); return true; }
-      return false;
-   }
-   
-   void ResetDailyStats() {
-      m_todayTradeCount = 0;
-      m_dayStartBalance = m_account.Balance();
-   }
-   
-   bool CanOpenNewPosition() {
-      int openPositions = 0;
-      for(int i = 0; i < PositionsTotal(); i++)
-         if(m_position.SelectByIndex(i) && m_position.Magic() == m_magicNumber) openPositions++;
-      if(openPositions >= MaxPositions) return false;
-      long spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
-      if(spread > MaxSpreadPoints) return false;
-      if(m_currentATR / m_symbol.Point() < MinATR_Points) return false;
-      if(!IsInTradingSession()) return false;
-      return true;
-   }
-   
-   // FIX #2: Call RefreshRates() so Ask/Bid doesn't return 0.0 creating bad SL/TP
-   void CalculateBullishEntry(double &entry, double &sl, double &tp) {
-      m_symbol.RefreshRates(); 
-      entry = m_symbol.Ask();
-      sl = entry - (m_currentATR * ATR_SL_Multiplier);
-      tp = entry + (m_currentATR * ATR_TP_Multiplier);
-      entry = NormalizeDouble(entry, (int)m_symbol.Digits());
-      sl   = NormalizeDouble(sl,   (int)m_symbol.Digits());
-      tp   = NormalizeDouble(tp,   (int)m_symbol.Digits());
-   }
-   
-   void CalculateBearishEntry(double &entry, double &sl, double &tp) {
-      m_symbol.RefreshRates();
-      entry = m_symbol.Bid();
-      sl = entry + (m_currentATR * ATR_SL_Multiplier);
-      tp = entry - (m_currentATR * ATR_TP_Multiplier);
-      entry = NormalizeDouble(entry, (int)m_symbol.Digits());
-      sl   = NormalizeDouble(sl,   (int)m_symbol.Digits());
-      tp   = NormalizeDouble(tp,   (int)m_symbol.Digits());
-   }
-   
-   // FIX #3: Adjusted mathematical formula so lot calculation is based on actual tick values
-   double RiskLot(double riskPercent, double atr) {
-      double riskAmount = m_account.Balance() * riskPercent / 100.0;
-      double slDistance = atr * ATR_SL_Multiplier;
-      double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      
-      if(slDistance <= 0 || tickValue <= 0 || tickSize <= 0) return 0.01;
-      
-      double slPoints = slDistance / tickSize;
-      double lot = riskAmount / (slPoints * tickValue);
-      
-      double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-      double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-      double stepLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-      
-      lot = MathRound(lot / stepLot) * stepLot;
-      if(lot < minLot) lot = minLot;
-      if(lot > maxLot) lot = maxLot;
-      
-      return NormalizeDouble(lot, 2);
-   }
-   
-   void ApplyBreakEven(CPositionTracker &pos) {
-      if(!UseBreakEven || pos.breakEvenSet) return;
-      double beTrigger = m_currentATR * BE_TriggerATR;
-      if(m_position.SelectByTicket(pos.ticket)) {
-         if(m_position.Profit() >= beTrigger) {
-            double entry = m_position.OpenPrice();
-            m_trade.PositionModify(pos.ticket, entry, m_position.TakeProfit());
-            pos.breakEvenSet = true;
+
+      // 2. Partial Close Management
+      if(UsePartialClose && !m_trackers[trackerIdx].partiallyClosed) {
+         if(profitPoints >= PartialCloseTriggerATR * currentATR) {
+            double closeVolume = m_position.Volume() * (PartialClosePercent / 100.0);
+            double lotStep = m_symbol.LotsStep();
+            closeVolume = MathFloor(closeVolume / lotStep) * lotStep;
+
+            if(closeVolume >= m_symbol.LotsMin()) {
+               if(m_trade.PositionClosePartial(ticket, closeVolume)) {
+                  m_trackers[trackerIdx].partiallyClosed = true;
+                  Print("[INFO] Partial Close executed for ticket #", ticket, " Volume: ", closeVolume);
+               }
+            }
          }
       }
-   }
-   
-   void ManageTrailingStop(CPositionTracker &pos) {
-      if(!UseTrailingStop || pos.trailingActive) return;
-      if(m_position.SelectByTicket(pos.ticket)) {
-         double profit = m_position.Profit();
-         double trailStart = m_currentATR * Trail_StartATR;
-         if(profit >= trailStart) {
+
+      // 3. Trailing Stop Management
+      if(UseTrailingStop) {
+         if(profitPoints >= Trail_StartATR * currentATR) {
+            double trailStepDist = Trail_StepATR * currentATR;
+
             if(m_position.PositionType() == POSITION_TYPE_BUY) {
-               double newSL = m_symbol.Bid() - (m_currentATR * Trail_StepATR);
-               if(newSL > m_position.StopLoss() || m_position.StopLoss() == 0) {
-                  m_trade.PositionModify(pos.ticket, newSL, m_position.TakeProfit());
-                  pos.trailingActive = true;
+               double desiredSL = currentPrice - trailStepDist;
+               if(desiredSL > currentSL + (m_symbol.Point() * 10)) {
+                  m_trade.PositionModify(ticket, desiredSL, currentTP);
                }
-            } else {
-               double newSL = m_symbol.Ask() + (m_currentATR * Trail_StepATR);
-               if(newSL < m_position.StopLoss() || m_position.StopLoss() == 0) {
-                  m_trade.PositionModify(pos.ticket, newSL, m_position.TakeProfit());
-                  pos.trailingActive = true;
+            } else if(m_position.PositionType() == POSITION_TYPE_SELL) {
+               double desiredSL = currentPrice + trailStepDist;
+               if(currentSL == 0 || desiredSL < currentSL - (m_symbol.Point() * 10)) {
+                  m_trade.PositionModify(ticket, desiredSL, currentTP);
                }
             }
          }
       }
    }
-   
-   void ExecuteTrade(int type) {
-      if(!CanOpenNewPosition() || CheckDailyLimits()) return;
-      double entry, sl, tp;
-      
-      if(type == ORDER_TYPE_BUY) CalculateBullishEntry(entry, sl, tp);
-      else CalculateBearishEntry(entry, sl, tp);
-      
-      double lot = RiskLot(RiskPercent, m_currentATR);
-      MqlTradeRequest request = {};
-      MqlTradeResult result = {};
-      request.action = TRADE_ACTION_DEAL;
-      request.symbol = _Symbol;
-      request.volume = lot;
-      request.type = (ENUM_ORDER_TYPE)type;
-      request.price = entry;
-      request.sl = sl;
-      request.tp = tp;
-      request.deviation = SlippagePoints;
-      request.magic = m_magicNumber;
-      request.comment = "BAKOME_ICT_EA";
-      
-      // FIX #1: Added dynamic filling mode detection
-      int fillFlags = (int)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
-      if((fillFlags & SYMBOL_FILLING_FOK) != 0) request.type_filling = ORDER_FILLING_FOK;
-      else if((fillFlags & SYMBOL_FILLING_IOC) != 0) request.type_filling = ORDER_FILLING_IOC;
-      else request.type_filling = ORDER_FILLING_RETURN;
-      
-      if(ExecuteWithRetry(request, result)) {
-         LogInfo(StringFormat("Executed %s %.2f @ %.2f", (type==ORDER_TYPE_BUY)?"BUY":"SELL", lot, entry));
-         m_todayTradeCount++;
-         CPositionTracker* pos = m_positionPool.Acquire();
-         pos.ticket = result.order;
-         pos.openTime = TimeCurrent();
-         pos.openPrice = entry;
-         pos.originalSL = sl;
-         pos.originalTP = tp;
-         ArrayResize(m_activePositions, ArraySize(m_activePositions)+1);
-         m_activePositions[ArraySize(m_activePositions)-1] = pos;
-      } else LogError(StringFormat("Order failed: %d", result.retcode));
-   }
-   
-public:
-   CUltimateICTGoldScalper() { m_positionPool = new CObjectPool<CPositionTracker>(5); }
-   ~CUltimateICTGoldScalper() { delete m_positionPool; }
-   
-   bool Init() {
-      m_symbol.Name(_Symbol);
-      m_symbol.Refresh();
-      m_atrHandle = iATR(_Symbol, PERIOD_M5, 14);
-      m_emaFastHandle = iMA(_Symbol, PERIOD_H1, 34, 0, MODE_EMA, PRICE_CLOSE);
-      m_emaSlowHandle = iMA(_Symbol, PERIOD_H4, 200, 0, MODE_EMA, PRICE_CLOSE);
-      if(m_atrHandle==INVALID_HANDLE || m_emaFastHandle==INVALID_HANDLE || m_emaSlowHandle==INVALID_HANDLE) {
-         LogError("Indicators failed");
-         return false;
-      }
-      m_magicNumber = GenerateMagicNumber();
-      m_dayStartBalance = m_account.Balance();
-      m_todayTradeCount = 0;
-      m_initialized = true;
-      LogInfo("BAKOME EA initialized. Magic: " + IntegerToString(m_magicNumber));
-      return true;
-   }
-   
-   void OnTick() {
-      if(!m_initialized) return;
-      UpdateMarketData();
-      UpdateLiquidityLevels();
-      UpdateFairValueGaps();
-      UpdateOrderBlocks();
-      for(int i=0; i<ArraySize(m_activePositions); i++) {
-         CPositionTracker* pos = m_activePositions[i];
-         if(pos && m_position.SelectByTicket(pos.ticket)) {
-            if(!m_position.SelectByTicket(pos.ticket) || m_position.Time() == 0) {
-               m_positionPool.Release(pos);
-               ArrayRemove(m_activePositions, i, 1);
-               i--;
-               continue;
-            }
-            if(m_position.StopLoss() == 0 && m_position.Profit() > 0) ApplyBreakEven(*pos);
-            ManageTrailingStop(*pos);
+}
+
+// Count open positions belonging to this EA
+int CountOpenPositions() {
+   int count = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && m_position.SelectByTicket(ticket)) {
+         if(m_position.Magic() == m_magicNumber && m_position.Symbol() == _Symbol) {
+            count++;
          }
       }
-      if(IsInKillZone()) {
-         ENUM_POSITION_TYPE bias = GetMarketBias();
-         if(bias == POSITION_TYPE_BUY) ExecuteTrade(ORDER_TYPE_BUY);
-         else if(bias == POSITION_TYPE_SELL) ExecuteTrade(ORDER_TYPE_SELL);
+   }
+   return count;
+}
+
+//+------------------------------------------------------------------+
+//| MAIN ON TICK FUNCTION                                            |
+//+------------------------------------------------------------------+
+void OnTick() {
+   // 1. Midnight Reset Check
+   CheckDailyReset();
+
+   // 2. Refresh Prices & ATR
+   if(!m_symbol.RefreshRates()) return;
+   
+   double currentATR = GetCurrentATR();
+   if(currentATR <= 0) return;
+
+   // 3. Manage active positions on every tick
+   ManageOpenPositions(currentATR);
+
+   // 4. Performance Optimization check
+   if(EnablePerformanceMode && !IsNewBar()) return;
+
+   // 5. Daily Risk & Profit Limit Enforcements
+   UpdateDailyStats();
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+
+   if(m_dailyProfit >= balance * (MaxDailyProfitPercent / 100.0)) {
+      if(!m_targetLoggedToday) {
+         Print("[INFO] Daily profit target reached. Trading halted for today.");
+         m_targetLoggedToday = true;
+      }
+      return;
+   }
+
+   if(m_dailyProfit <= -1.0 * balance * (MaxDailyRiskPercent / 100.0)) {
+      if(!m_targetLoggedToday) {
+         Print("[WARNING] Max daily loss limit hit. Trading halted for today.");
+         m_targetLoggedToday = true;
+      }
+      return;
+   }
+
+   if(m_dailyTradesCount >= MaxDailyTrades) {
+      return;
+   }
+
+   // 6. Pre-Trade Filters (Spread & ATR Thresholds)
+   double currentSpread = (m_symbol.Ask() - m_symbol.Bid()) / m_symbol.Point();
+   if(currentSpread > MaxSpreadPoints) return;
+   if(currentATR < MinATR_Points * m_symbol.Point()) return;
+
+   // 7. Max Open Positions Check
+   if(CountOpenPositions() >= MaxPositions) return;
+
+   // 8. Session & Time Window Check
+   if(!IsTradingAllowedByTime()) return;
+
+   // 9. Analyze ICT Signals
+   int sweepSignal = CheckLiquiditySweep();
+   int fvgSignal   = CheckFVG(currentATR);
+   int obSignal    = CheckOrderBlock();
+
+   // Signal Confluence
+   int finalSignal = 0;
+   if(sweepSignal > 0 && fvgSignal >= 0 && obSignal >= 0) finalSignal = 1;  // BUY
+   if(sweepSignal < 0 && fvgSignal <= 0 && obSignal <= 0) finalSignal = -1; // SELL
+
+   if(finalSignal == 0) return;
+
+   // 10. Execute Trades
+   double slDistance = currentATR * ATR_SL_Multiplier;
+   double tpDistance = currentATR * ATR_TP_Multiplier;
+   double lotSize    = CalculateLotSize(slDistance);
+
+   if(finalSignal == 1) { // BUY ORDER
+      double ask = m_symbol.Ask();
+      double sl  = ask - slDistance;
+      double tp  = ask + tpDistance;
+
+      if(m_trade.Buy(lotSize, _Symbol, ask, sl, tp, "ICT Scalp Buy")) {
+         Print("[INFO] Executed BUY ", lotSize, " @ ", ask);
       }
    }
-};
+   else if(finalSignal == -1) { // SELL ORDER
+      double bid = m_symbol.Bid();
+      double sl  = bid + slDistance;
+      double tp  = bid - tpDistance;
 
-CUltimateICTGoldScalper EA;
-
-void OnInit() { if(!EA.Init()) ExpertRemove(); }
-void OnTick() { EA.OnTick(); }
-void OnDeinit(const int reason) { Print("EA removed: ", reason); }
+      if(m_trade.Sell(lotSize, _Symbol, bid, sl, tp, "ICT Scalp Sell")) {
+         Print("[INFO] Executed SELL ", lotSize, " @ ", bid);
+      }
+   }
+}
