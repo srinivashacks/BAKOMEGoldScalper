@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                       BAKOME_Ultimate_ICT_Gold_Scalper_v3.0.mq5 |
 //|                                      BAKOME Trading Systems      |
-//|                                                   Version 3.00 |
+//|                                                   Version 3.1 |
 //+------------------------------------------------------------------+
 #property copyright "BAKOME – Fabrice Kitoko"
-#property version   "3.00"
+#property version   "3.1"
 #property description "Advanced ICT Gold Scalper with FVG, Order Blocks, Silver Bullet"
 #property link      "https://github.com/BAKOME-Hub"
 #property strict
